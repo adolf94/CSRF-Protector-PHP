@@ -24,12 +24,15 @@ var CSRFP = {
 	 */
 	checkForUrls: [],
 	/**
-	 * Returns true if the get request doesn't need csrf token.
+	 * Function to check if a certain url is allowed to perform the request
+	 * With or without csrf token
 	 *
-	 * @param {String} url to check.
-	 * @return {Boolean} true if csrftoken is not needed.
+	 * @param {string} url
+	 *
+	 * @return {Boolean} 	true if csrftoken is not needed
+	 * 						false if csrftoken is needed
 	 */
-	_isValidGetRequest: function (url) {
+	_isValidGetRequest: function(url) {
 		for (var i = 0; i < CSRFP.checkForUrls.length; i++) {
 			var match = CSRFP.checkForUrls[i].exec(url);
 			if (match !== null && match.length > 0) {
@@ -39,133 +42,144 @@ var CSRFP = {
 		return true;
 	},
 	/**
-	 * Returns auth key from cookie.
+	 * Function to get Auth key from cookie and return it to requesting function
 	 *
-	 * @return {String} auth key from cookie.
+	 * @param: void
+	 *
+	 * @return {string|Boolean} csrftoken retrieved from cookie
 	 */
-	_getAuthKey: function () {
-		var regex = new RegExp(`${CSRFP.CSRFP_TOKEN}=([^;]+)(;|$)`);
-		var regexResult = regex.exec(document.cookie);
-		if (regexResult === null) {
-			return null;
-		}
+	_getAuthKey: function() {
+		if(document.getElementById(CSRFP.CSRFP_TOKEN+"_VALUE")) return document.getElementById(CSRFP.CSRFP_TOKEN + "_VALUE").value;
 
-		return regexResult[1];
+
+		var re = new RegExp(CSRFP.CSRFP_TOKEN +"=([^;]+)(;|$)");
+		var RegExpArray = re.exec(document.cookie);
+		
+		if (RegExpArray === null) {
+			return false;
+		}
+		return RegExpArray[1];
 	},
 	/** 
-	 * Returns domain name of a url.
+	 * Function to get domain of any url
 	 *
-	 * @param {String} url - url to check.
-	 * @return {String} domain of the input url.
+	 * @param {string} url
+	 *
+	 * @return {string} domain of url
 	 */
-	_getDomain: function (url) {
-		// TODO(mebjas): add support for other protocols that web supports.
-		if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) {
+	_getDomain: function(url) {
+		if (url.indexOf("http://") !== 0 
+			&& url.indexOf("https://") !== 0)
 			return document.domain;
-		}
 		return /http(s)?:\/\/([^\/]+)/.exec(url)[2];
 	},
 	/**
-     * Creates hidden input element with CSRF_TOKEN in it.
+	 * Function to create and return a hidden input element
+	 * For storing the CSRFP_TOKEN
 	 *
-	 * @return {HTMLInputElement} hidden input element.
+	 * @param: void
+	 *
+	 * @return {HTMLInputElement} input element
 	 */
-	_createHiddenInputElement: function () {
-		var inputElement = document.createElement('input');
-		inputElement.setAttribute('name', CSRFP.CSRFP_TOKEN);
-		inputElement.setAttribute('class', CSRFP.CSRFP_TOKEN);
-		inputElement.type = 'hidden';
-		inputElement.value = CSRFP._getAuthKey();
-		return inputElement;
+	_getInputElt: function() {
+		var hiddenObj = document.createElement("input");
+		hiddenObj.setAttribute('name', CSRFP.CSRFP_TOKEN);
+		hiddenObj.setAttribute('class', CSRFP.CSRFP_TOKEN);
+		hiddenObj.type = 'hidden';
+		hiddenObj.value = CSRFP._getAuthKey();
+		return hiddenObj;
 	},
 	/**
-	 * Returns absolute url from the input relative components.
+	 * Returns absolute path for relative path
 	 *
-	 * @param {String} basePart - base part of the url.
-	 * @param {String} relativePart - relative part of the url.
-	 * @return {String} absolute url.
+	 * @param {string} base base url
+	 * @param {string} relative relative url
+	 *
+	 * @return {string} absolute path
 	 */
-	_createAbsolutePath: function (basePart, relativePart) {
-		var stack = basePart.split("/");
-		var parts = relativePart.split("/");
-		stack.pop();
-
+	_getAbsolutePath: function(base, relative) {
+		var stack = base.split("/");
+		var parts = relative.split("/");
+		// remove current file name (or empty string)
+		// (omit if "base" is the current folder without trailing slash)
+		stack.pop(); 
+			 
 		for (var i = 0; i < parts.length; i++) {
-			if (parts[i] === ".") {
+			if (parts[i] === ".")
 				continue;
-			}
-			if (parts[i] === "..") {
+			if (parts[i] === "..")
 				stack.pop();
-			} else {
+			else
 				stack.push(parts[i]);
-			}
 		}
 		return stack.join("/");
 	},
 	/**
-	 * Creates a function wrapper around {@param runnableFunction}, removes
-     * CSRF Token before calling the function and then put it back.
+	 * Remove jcsrfp-token run fun and then put them back
 	 *
-	 * @param {Function} runnableFunction - function to run.
-	 * @param {Object} htmlFormObject - reference form object.
-	 * @return modified wrapped function.
+	 * @param {function} fun
+	 * @param {object} obj reference form obj
+	 *
+	 * @return function
 	 */
-	_createCsrfpWrappedFunction: function (runnableFunction, htmlFormObject) {
-		return function (event) {
+	_csrfpWrap: function(fun, obj) {
+		return function(event) {
 			// Remove CSRf token if exists
-			if (typeof htmlFormObject[CSRFP.CSRFP_TOKEN] !== 'undefined') {
-				var target = htmlFormObject[CSRFP.CSRFP_TOKEN];
+			if (typeof obj[CSRFP.CSRFP_TOKEN] !== 'undefined') {
+				var target = obj[CSRFP.CSRFP_TOKEN];
 				target.parentNode.removeChild(target);
 			}
-
+			
 			// Trigger the functions
-			var result = runnableFunction.apply(this, [event]);
-
+			var result = fun.apply(this, [event]);
+			
 			// Now append the CSRFP-Token back
-			htmlFormObject.appendChild(CSRFP._createHiddenInputElement());
+			obj.appendChild(CSRFP._getInputElt());
+			
 			return result;
 		};
 	},
 	/**
-	 * Initialises the CSRFProtector js script.
+	 * Initialises the CSRFProtector js script
+	 *
+	 * @param: void
+	 *
+	 * @return void
 	 */
-	_init: function () {
-		this.CSRFP_TOKEN = document.getElementById(
-			CSRFP_FIELD_TOKEN_NAME).value;
-
+	_init: function() {
+		CSRFP.CSRFP_TOKEN = document.getElementById(CSRFP_FIELD_TOKEN_NAME).value;
 		try {
-			var csrfFieldElem = document.getElementById(CSRFP_FIELD_URLS);
-			this.checkForUrls = JSON.parse(csrfFieldElem.value);
-		} catch (exception) {
-			console.error(exception);
-			console.error('[ERROR] [CSRF Protector] unable to parse blacklisted'
-				+ ` url fields. Exception = ${exception}`);
+			CSRFP.checkForUrls = JSON.parse(document.getElementById(CSRFP_FIELD_URLS).value);
+		} catch (err) {
+			console.error(err);
+			console.error('[ERROR] [CSRF Protector] unable to parse blacklisted url fields.');
 		}
 
-		// Convert the rules received from php library to regex objects.
+		//convert these rules received from php lib to regex objects
 		for (var i = 0; i < CSRFP.checkForUrls.length; i++) {
-			this.checkForUrls[i]
-				= this.checkForUrls[i].replace(/\*/g, '(.*)')
-					.replace(/\//g, "\\/");
-			this.checkForUrls[i] = new RegExp(CSRFP.checkForUrls[i]);
+			CSRFP.checkForUrls[i] = CSRFP.checkForUrls[i].replace(/\*/g, '(.*)')
+								.replace(/\//g, "\\/");
+			CSRFP.checkForUrls[i] = new RegExp(CSRFP.checkForUrls[i]);
 		}
+	
 	}
-}
+	
+}; 
 
 //==========================================================
 // Adding tokens, wrappers on window onload
 //==========================================================
 
 function csrfprotector_init() {
-
+	
 	// Call the init function
 	CSRFP._init();
 
-	// Basic FORM submit event handler to intercept the form request and attach
-	// a CSRFP TOKEN if it's not already available.
-	var basicSubmitInterceptor = function (event) {
-		if (!event.target[CSRFP.CSRFP_TOKEN]) {
-			event.target.appendChild(CSRFP._createHiddenInputElement());
+	// definition of basic FORM submit event handler to intercept the form request
+	// and attach a CSRFP TOKEN if it's not already available
+	var BasicSubmitInterceptor = function(event) {
+		if (typeof event.target[CSRFP.CSRFP_TOKEN] === 'undefined') {
+			event.target.appendChild(CSRFP._getInputElt());
 		} else {
 			//modify token to latest value
 			event.target[CSRFP.CSRFP_TOKEN].value = CSRFP._getAuthKey();
@@ -178,41 +192,44 @@ function csrfprotector_init() {
 	// TODO - check for method
 	//==================================================================
 	// run time binding
-	document.querySelector('body').addEventListener('submit', function (event) {
+	document.querySelector('body').addEventListener('submit', function(event) {
 		if (event.target.tagName.toLowerCase() === 'form') {
-			basicSubmitInterceptor(event);
+			BasicSubmitInterceptor(event);
 		}
 	});
+
+	// initial binding
+	// for(var i = 0; i < document.forms.length; i++) {
+	// 	document.forms[i].addEventListener("submit", BasicSubmitInterceptor);
+	// }
 
 	//==================================================================
 	// Adding csrftoken to request resulting from direct form.submit() call
 	// Add for each POST, while for mentioned GET request
 	// TODO - check for form method
 	//==================================================================
-	HTMLFormElement.prototype.submit_real = HTMLFormElement.prototype.submit;
-	HTMLFormElement.prototype.submit = function () {
+	HTMLFormElement.prototype.submit_ = HTMLFormElement.prototype.submit;
+	HTMLFormElement.prototype.submit = function() {
 		// check if the FORM already contains the token element
-		if (!this.getElementsByClassName(CSRFP.CSRFP_TOKEN).length) {
-			this.appendChild(CSRFP._createHiddenInputElement());
-		}
-		this.submit_real();
+		if (!this.getElementsByClassName(CSRFP.CSRFP_TOKEN).length)
+			this.appendChild(CSRFP._getInputElt());
+		this.submit_();
 	};
+
 
 	/**
 	 * Add wrapper for HTMLFormElements addEventListener so that any further 
 	 * addEventListens won't have trouble with CSRF token
 	 * todo - check for method
 	 */
-	HTMLFormElement.prototype.addEventListener_real
-		= HTMLFormElement.prototype.addEventListener;
-	HTMLFormElement.prototype.addEventListener = function (
-		eventType, func, bubble) {
+	HTMLFormElement.prototype.addEventListener_ = HTMLFormElement.prototype.addEventListener;
+	HTMLFormElement.prototype.addEventListener = function(eventType, fun, bubble) {
 		if (eventType === 'submit') {
-			var wrappedFunc = CSRFP._createCsrfpWrappedFunction(func, this);
-			this.addEventListener_real(eventType, wrappedFunc, bubble);
+			var wrapped = CSRFP._csrfpWrap(fun, this);
+			this.addEventListener_(eventType, wrapped, bubble);
 		} else {
-			this.addEventListener_real(eventType, func, bubble);
-		}
+			this.addEventListener_(eventType, fun, bubble);
+		}	
 	};
 
 	/**
@@ -220,18 +237,18 @@ function csrfprotector_init() {
 	 * todo - check for method
 	 * todo - typeof is now obsolete for IE 11, use some other method.
 	 */
-	if (HTMLFormElement.prototype.attachEvent) {
-		HTMLFormElement.prototype.attachEvent_real
-			= HTMLFormElement.prototype.attachEvent;
-		HTMLFormElement.prototype.attachEvent = function (eventType, func) {
+	if (typeof HTMLFormElement.prototype.attachEvent !== 'undefined') {
+		HTMLFormElement.prototype.attachEvent_ = HTMLFormElement.prototype.attachEvent;
+		HTMLFormElement.prototype.attachEvent = function(eventType, fun) {
 			if (eventType === 'onsubmit') {
-				var wrappedFunc = CSRFP._createCsrfpWrappedFunction(func, this);
-				this.attachEvent_real(eventType, wrappedFunc);
+				var wrapped = CSRFP._csrfpWrap(fun, this);
+				this.attachEvent_(eventType, wrapped);
 			} else {
-				this.attachEvent_real(eventType, func);
+				this.attachEvent_(eventType, fun);
 			}
 		}
 	}
+
 
 	//==================================================================
 	// Wrapper for XMLHttpRequest & ActiveXObject (for IE 6 & below)
@@ -246,19 +263,19 @@ function csrfprotector_init() {
 	 */
 	function new_open(method, url, async, username, password) {
 		this.method = method;
-		var isAbsolute = url.indexOf("./") === -1;
+		var isAbsolute = (url.indexOf("./") === -1);
 		if (!isAbsolute) {
-			var base = location.protocol + '//' + location.host
-				+ location.pathname;
-			url = CSRFP._createAbsolutePath(base, url);
+			var base = location.protocol +'//' +location.host 
+							+ location.pathname;
+			url = CSRFP._getAbsolutePath(base, url);
 		}
-
-		if (method.toLowerCase() === 'get' && !CSRFP._isValidGetRequest(url)) {
-			var token = CSRFP._getAuthKey();
+		if (method.toLowerCase() === 'get' 
+			&& !CSRFP._isValidGetRequest(url)) {
+			//modify the url
 			if (url.indexOf('?') === -1) {
-				url += `?${CSRFP.CSRFP_TOKEN}=${token}`
+				url += "?" +CSRFP.CSRFP_TOKEN +"=" +CSRFP._getAuthKey();
 			} else {
-				url += `&${CSRFP.CSRFP_TOKEN}=${token}`;
+				url += "&" +CSRFP.CSRFP_TOKEN +"=" +CSRFP._getAuthKey();
 			}
 		}
 
@@ -292,7 +309,7 @@ function csrfprotector_init() {
 		ActiveXObject.prototype.old_send = ActiveXObject.prototype.send;
 		ActiveXObject.prototype.old_open = ActiveXObject.prototype.open;
 		ActiveXObject.prototype.open = new_open;
-		ActiveXObject.prototype.send = new_send;
+		ActiveXObject.prototype.send = new_send;	
 	}
 	//==================================================================
 	// Rewrite existing urls ( Attach CSRF token )
@@ -304,44 +321,42 @@ function csrfprotector_init() {
 	//==================================================================
 
 	for (var i = 0; i < document.links.length; i++) {
-		document.links[i].addEventListener("mousedown", function (event) {
+		document.links[i].addEventListener("mousedown", function(event) {
 			var href = event.target.href;
-			if (typeof href !== "string") {
-				return;
-			}
-			var urlParts = href.split('#');
-			var url = urlParts[0];
-			var hash = urlParts[1];
+			if(typeof href === "string")
+			{
+				var urlParts = href.split('#');
+				var url = urlParts[0];
+				var hash = urlParts[1];
 
-			if (CSRFP._getDomain(url).indexOf(document.domain) === -1
-				|| CSRFP._isValidGetRequest(url)) {
-				//cross origin or not to be protected by rules -- ignore
-				return;
-			}
-
-			var token = CSRFP._getAuthKey();
-			if (url.indexOf('?') !== -1) {
-				if (url.indexOf(CSRFP.CSRFP_TOKEN) === -1) {
-					url += `&${CSRFP.CSRFP_TOKEN}=${token}`;
-				} else {
-					var replacementString = `${CSRFP.CSRFP_TOKEN}=${token}$1`;
-					url = url.replace(
-						new RegExp(CSRFP.CSRFP_TOKEN + "=.*?(&|$)", 'g'),
-						replacementString);
+				if(CSRFP._getDomain(url).indexOf(document.domain) === -1
+					|| CSRFP._isValidGetRequest(url)) {
+					//cross origin or not to be protected by rules -- ignore
+					return;
 				}
-			} else {
-				url += `?${CSRFP.CSRFP_TOKEN}=${token}`;
-			}
 
-			event.target.href = url;
-			if (hash) {
-				event.target.href += `#${hash}`;
+				if (url.indexOf('?') !== -1) {
+					if(url.indexOf(CSRFP.CSRFP_TOKEN) === -1) {
+						url += "&" +CSRFP.CSRFP_TOKEN +"=" +CSRFP._getAuthKey();
+					} else {
+						url = url.replace(new RegExp(CSRFP.CSRFP_TOKEN +"=.*?(&|$)", 'g'),
+							CSRFP.CSRFP_TOKEN +"=" +CSRFP._getAuthKey() + "$1");
+					}
+				} else {
+					url += "?" +CSRFP.CSRFP_TOKEN +"=" +CSRFP._getAuthKey();
+				}
+
+				event.target.href = url;
+				if (typeof hash !== 'undefined') {
+					event.target.href += '#' +hash;
+				}
 			}
 		});
 	}
+
 }
 
-window.addEventListener("DOMContentLoaded", function () {
+window.addEventListener("DOMContentLoaded", function() {
 	csrfprotector_init();
 
 	// Dispatch an event so clients know the library has initialized
